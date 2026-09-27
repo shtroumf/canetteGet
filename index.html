@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Consignes — Cueillette</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2rem;
+    background: #0d1117;
+    color: #e6edf3;
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    padding: 1.5rem;
+    text-align: center;
+  }
+  h1 { font-size: 1.6rem; font-weight: 600; letter-spacing: 0.05em; }
+  #btn {
+    background: #2ea043;
+    color: #fff;
+    border: none;
+    border-radius: 14px;
+    padding: 1.4rem 2.2rem;
+    font-size: 1.3rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform .15s ease, background .15s ease;
+    max-width: 90vw;
+  }
+  #btn:hover { background: #3fb950; transform: scale(1.04); }
+  #btn:disabled { background: #30363d; color: #8b949e; cursor: not-allowed; transform: none; }
+  #status { min-height: 3.5em; font-size: 1rem; color: #9198a1; max-width: 34em; }
+  .err { color: #f85149 !important; }
+  .ok  { color: #3fb950 !important; }
+</style>
+</head>
+<body>
+  <h1>🧺 Consignes</h1>
+  <button id="btn" onclick="envoyer()">Venez cueillir mes consignes !</button>
+  <p id="status"></p>
+
+<script>
+  // ⚙️ PERSONNALISATION : remplacez "mon-topic-secret" par VOTRE nom de topic ntfy.
+  const NTFY_TOPIC = "mon-topic-secret";
+  const NTFY_URL = "https://ntfy.sh/" + NTFY_TOPIC;
+
+  const btn = document.getElementById("btn");
+  const status = document.getElementById("status");
+
+  // Adresse postale via géocodage inversé (OpenStreetMap / Nominatim, gratuit, sans clé)
+  async function adresseDepuisGPS(lat, lon) {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&accept-language=fr`;
+    const r = await fetch(url, { headers: { "Accept": "application/json" } });
+    if (!r.ok) throw new Error("Géocodage indisponible");
+    const d = await r.json();
+    return d.display_name || `${lat}, ${lon}`;
+  }
+
+  function coordonneesTexte(lat, lon) {
+    return `${lat.toFixed(5)}, ${lon.toFixed(5)}\nhttps://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=17/${lat}/${lon}`;
+  }
+
+  async function envoyer() {
+    btn.disabled = true;
+
+    if (!("geolocation" in navigator)) {
+      afficher("❌ Votre navigateur ne supporte pas la géolocalisation.", "err");
+      btn.disabled = false;
+      return;
+    }
+
+    afficher("📍 Localisation en cours…");
+
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      const { latitude, longitude } = pos.coords;
+      afficher("🔎 Recherche de l'adresse…");
+      let adresse;
+      try {
+        adresse = await adresseDepuisGPS(latitude, longitude);
+      } catch {
+        adresse = `Coordonnées GPS : ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+      }
+      const message = `🧺 Un visiteur a cliqué !\n\nAdresse : ${adresse}\n${coordonneesTexte(latitude, longitude)}`;
+      try {
+        const r = await fetch(NTFY_URL, {
+          method: "POST",
+          headers: { "Title": "Nouvelle cueillette de consignes", "Tags": "basket", "Priority": "high" },
+          body: message
+        });
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        afficher("✅ Notification envoyée ! À très bientôt.", "ok");
+      } catch (e) {
+        afficher("⚠️ Position trouvée, mais l'envoi a échoué (" + e.message + ").", "err");
+        btn.disabled = false;
+      }
+    }, (err) => {
+      const msgs = {
+        1: "❌ Vous avez refusé le partage de votre position.",
+        2: "❌ Position indisponible actuellement.",
+        3: "⏱️ La localisation a pris trop de temps. Réessayez."
+      };
+      afficher(msgs[err.code] || "❌ Erreur de géolocalisation.", "err");
+      btn.disabled = false;
+    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+  }
+
+  function afficher(texte, classe) {
+    status.textContent = texte;
+    status.className = classe || "";
+  }
+</script>
+</body>
+</html>
