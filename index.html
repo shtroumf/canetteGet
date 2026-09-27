@@ -12,7 +12,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 2rem;
+    gap: 1.6rem;
     background: #0d1117;
     color: #e6edf3;
     font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -32,87 +32,132 @@
     transition: transform .15s ease, background .15s ease;
     max-width: 90vw;
   }
-  #btn:hover { background: #3fb950; transform: scale(1.04); }
+  #btn:hover:not(:disabled) { background: #3fb950; transform: scale(1.04); }
   #btn:disabled { background: #30363d; color: #8b949e; cursor: not-allowed; transform: none; }
-  #status { min-height: 3.5em; font-size: 1rem; color: #9198a1; max-width: 34em; }
+  #status { min-height: 4.5em; font-size: 1rem; color: #9198a1; max-width: 34em; line-height: 1.5; }
   .err { color: #f85149 !important; }
   .ok  { color: #3fb950 !important; }
+  #adresse { font-size: .95rem; color: #58a6ff; max-width: 34em; word-break: break-word; }
 </style>
 </head>
 <body>
   <h1>🧺 Consignes</h1>
-  <button id="btn" onclick="envoyer()">Venez cueillir mes consignes !</button>
-  <p id="status"></p>
+  <button id="btn" disabled>Venez cueillir mes consignes !</button>
+  <p id="status">📍 Localisation en cours…</p>
+  <p id="adresse"></p>
 
 <script>
-  // ⚙️ PERSONNALISATION : remplacez "mon-topic-secret" par VOTRE nom de topic ntfy.
+  /* ⚙️ PERSONNALISATION : remplacez par VOTRE topic ntfy.
+     Si le topic est protégé, ajoutez "Authorization": "Bearer tk_..." dans les headers du POST. */
   const NTFY_TOPIC = "mon-topic-secret";
   const NTFY_URL = "https://ntfy.sh/" + NTFY_TOPIC;
 
   const btn = document.getElementById("btn");
-  const status = document.getElementById("status");
+  const statusEl = document.getElementById("status");
+  const adresseEl = document.getElementById("adresse");
 
-  // Adresse postale via géocodage inversé (OpenStreetMap / Nominatim, gratuit, sans clé)
-  async function adresseDepuisGPS(lat, lon) {
+  let position = null;   // { lat, lon } une fois le GPS reçu
+  let adresse = null;    // adresse postale résolue
+  let enCours = false;   // anti-doublon de demande GPS
+
+  function afficher(texte, classe) {
+    statusEl.textContent = texte;
+    statusEl.className = classe || "";
+  }
+
+  /* --- Géocodage inversé (OpenStreetMap / Nominatim, gratuit, sans clé) --- */
+  async function reverseGeocode(lat, lon) {
     const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&accept-language=fr`;
     const r = await fetch(url, { headers: { "Accept": "application/json" } });
-    if (!r.ok) throw new Error("Géocodage indisponible");
+    if (!r.ok) throw new Error("HTTP " + r.status);
     const d = await r.json();
-    return d.display_name || `${lat}, ${lon}`;
+    if (!d.display_name) throw new Error("adresse introuvable");
+    return d.display_name;
   }
 
-  function coordonneesTexte(lat, lon) {
-    return `${lat.toFixed(5)}, ${lon.toFixed(5)}\nhttps://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=17/${lat}/${lon}`;
-  }
-
-  async function envoyer() {
+  /* --- 1. Demande GPS déclenchée DÈS LE CHARGEMENT DE LA PAGE --- */
+  function demanderPosition() {
+    if (enCours) return;
+    enCours = true;
+    position = null;
+    adresse = null;
+    adresseEl.textContent = "";
     btn.disabled = true;
 
     if (!("geolocation" in navigator)) {
-      afficher("❌ Votre navigateur ne supporte pas la géolocalisation.", "err");
-      btn.disabled = false;
+      afficher("❌ Votre navigateur ne supporte pas la géolocalisation. Utilisez Chrome, Safari, Firefox ou Edge à jour.", "err");
+      enCours = false;
       return;
     }
 
     afficher("📍 Localisation en cours…");
 
-    navigator.geolocation.getCurrentPosition(async (pos) => {
-      const { latitude, longitude } = pos.coords;
-      afficher("🔎 Recherche de l'adresse…");
-      let adresse;
-      try {
-        adresse = await adresseDepuisGPS(latitude, longitude);
-      } catch {
-        adresse = `Coordonnées GPS : ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
-      }
-      const message = `🧺 Un visiteur a cliqué !\n\nAdresse : ${adresse}\n${coordonneesTexte(latitude, longitude)}`;
-      try {
-        const r = await fetch(NTFY_URL, {
-          method: "POST",
-          headers: { "Title": "Nouvelle cueillette de consignes", "Tags": "basket", "Priority": "high" },
-          body: message
-        });
-        if (!r.ok) throw new Error("HTTP " + r.status);
-        afficher("✅ Notification envoyée ! À très bientôt.", "ok");
-      } catch (e) {
-        afficher("⚠️ Position trouvée, mais l'envoi a échoué (" + e.message + ").", "err");
+    navigator.geolocation.getCurrentPosition(
+      /* --- 2. Dès réception des coordonnées : traduction immédiate en adresse postale --- */
+      async (pos) => {
+        enCours = false;
+        position = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        adresseEl.textContent = `${position.lat.toFixed(5)}, ${position.lon.toFixed(5)}`;
+
+        afficher("🔎 Recherche de votre adresse…");
+        try {
+          adresse = await reverseGeocode(position.lat, position.lon);
+          adresseEl.textContent = "📍 " + adresse;
+          afficher("✅ Position obtenue. Cliquez pour recevoir vos consignes.", "ok");
+        } catch (e) {
+          adresse = null;
+          afficher("⚠️ Adresse postale indisponible (" + e.message + ") — les coordonnées GPS seront utilisées.", "err");
+        }
         btn.disabled = false;
-      }
-    }, (err) => {
-      const msgs = {
-        1: "❌ Vous avez refusé le partage de votre position.",
-        2: "❌ Position indisponible actuellement.",
-        3: "⏱️ La localisation a pris trop de temps. Réessayez."
-      };
-      afficher(msgs[err.code] || "❌ Erreur de géolocalisation.", "err");
-      btn.disabled = false;
-    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+      },
+      (err) => {
+        enCours = false;
+        const msgs = {
+          1: "❌ Partage de position refusé. Autorisez la localisation dans les réglages du navigateur, puis rechargez la page.",
+          2: "❌ Position indisponible. Vérifiez que la localisation / le GPS du téléphone est activé.",
+          3: "⏱️ Délai dépassé. Touchez le bouton pour réessayer."
+        };
+        afficher(msgs[err.code] || "❌ Erreur de géolocalisation.", "err");
+        btn.disabled = false;
+      },
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 }
+    );
   }
 
-  function afficher(texte, classe) {
-    status.textContent = texte;
-    status.className = classe || "";
+  /* --- 3. Envoi de la notification ntfy (utilise l'adresse déjà résolue) --- */
+  async function envoyer() {
+    if (!position) { demanderPosition(); return; }   // pas encore de GPS → on relance la demande
+    btn.disabled = true;
+
+    const adresseFinale = adresse || `Coordonnées GPS : ${position.lat.toFixed(5)}, ${position.lon.toFixed(5)}`;
+    const message =
+      `🧺 Un visiteur a cliqué !\n\n` +
+      `Adresse : ${adresseFinale}\n` +
+      `${position.lat.toFixed(5)}, ${position.lon.toFixed(5)}\n` +
+      `https://www.openstreetmap.org/?mlat=${position.lat}&mlon=${position.lon}#map=17/${position.lat}/${position.lon}`;
+
+    afficher("📤 Envoi de la notification…");
+    try {
+      const r = await fetch(NTFY_URL, {
+        method: "POST",
+        headers: {
+          "Title": "Nouvelle cueillette de consignes",
+          "Tags": "basket",
+          "Priority": "high"
+          // "Authorization": "Bearer tk_votre_token"   // ← si topic protégé
+        },
+        body: message
+      });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      afficher("✅ Notification envoyée ! À très bientôt.", "ok");
+    } catch (e) {
+      afficher("⚠️ L'envoi a échoué (" + e.message + "). Touchez le bouton pour réessayer.", "err");
+      btn.disabled = false;
+    }
   }
+
+  btn.addEventListener("click", envoyer);
+  window.addEventListener("load", demanderPosition);   // ← déclenche le GPS au chargement
 </script>
 </body>
 </html>
