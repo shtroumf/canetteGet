@@ -66,6 +66,19 @@
   #manual-address { justify-self: start; min-height: 2.75rem; padding: .55rem .8rem; border: 1px solid #856404; border-radius: 6px; background: #fff; color: #593f00; font: inherit; font-weight: 700; cursor: pointer; }
   #manual-address:hover { background: #fff8e1; }
   #manual-address:focus-visible { outline: 3px solid #0969da; outline-offset: 2px; }
+  #reset-app { justify-self: center; min-height: 2.75rem; padding: .55rem .8rem; border: 1px solid #697582; border-radius: 6px; background: #161b22; color: #e6edf3; font: inherit; font-weight: 600; cursor: pointer; }
+  #reset-app:hover { background: #202830; }
+  #reset-app:focus-visible { outline: 3px solid #58a6ff; outline-offset: 2px; }
+  #reset-confirm-dialog { width: min(calc(100% - 2rem), 28rem); max-width: none; margin: auto; padding: 1.2rem; border: 1px solid #697582; border-radius: 6px; background: #161b22; color: #e6edf3; }
+  #reset-confirm-dialog::backdrop { background: rgb(0 0 0 / 65%); }
+  #reset-confirm-dialog form { display: grid; gap: .75rem; }
+  #reset-confirm-dialog h2 { font-size: 1.15rem; }
+  #reset-confirm-dialog p { line-height: 1.45; text-align: left; }
+  #reset-confirm-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .25rem; }
+  #reset-confirm-actions button { min-height: 2.75rem; padding: .55rem .8rem; border-radius: 6px; font: inherit; font-weight: 600; cursor: pointer; }
+  #reset-confirm-cancel { border: 1px solid #697582; background: #161b22; color: #e6edf3; }
+  #reset-confirm-continue { border: 1px solid #2ea043; background: #2ea043; color: #fff; }
+  #reset-confirm-actions button:focus-visible { outline: 3px solid #58a6ff; outline-offset: 2px; }
     #request-status { width: min(100%, 34rem); padding: .9rem 1rem; border: 1px solid #3fb950; border-left-width: 4px; border-radius: 6px; background: #15251b; color: #e6edf3; text-align: left; line-height: 1.45; animation: status-in .2s ease-out; }
     #request-status[hidden] { display: none; }
     #request-status[data-state="en-route"] { border-color: #58a6ff; background: #142331; }
@@ -106,6 +119,7 @@
   <section id="request-status" role="status" aria-live="polite" aria-atomic="true" hidden>
     <strong id="request-status-title"></strong>
     <p id="request-status-message"></p>
+    <p>Vous pouvez revenir sur cette page pour suivre le statut de votre demande en temps réel.</p>
     <small id="request-id"></small>
   </section>
   <section id="gps-help" role="region" aria-labelledby="gps-help-title" aria-live="polite" tabindex="-1" hidden>
@@ -143,8 +157,19 @@
   <p id="coordinates" hidden></p>
   <footer>
     <a href="explications.html">Comment fonctionne le service ?</a>
-    <small>© GetCannette <span class="version">v1.2.0</span></small>
+    <button id="reset-app" type="button">↻ Réinitialiser</button>
+    <small>© GetCannette <span class="version">v1.4.0</span></small>
   </footer>
+  <dialog id="reset-confirm-dialog" aria-labelledby="reset-confirm-title" aria-describedby="reset-confirm-message">
+    <form method="dialog">
+      <h2 id="reset-confirm-title">Attention</h2>
+      <p id="reset-confirm-message">Réinitialiser effacera le suivi local de cette demande, mais une demande déjà transmise pourra quand même être traitée. Votre adresse enregistrée sera conservée.</p>
+      <div id="reset-confirm-actions">
+        <button id="reset-confirm-cancel" type="submit" value="cancel" autofocus>Annuler</button>
+        <button id="reset-confirm-continue" type="submit" value="confirm">Continuer</button>
+      </div>
+    </form>
+  </dialog>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script>
@@ -180,6 +205,7 @@
   const gpsHelpEl = document.getElementById("gps-help");
   const gpsHelpStepsEl = document.getElementById("gps-help-steps");
   const manualAddressBtn = document.getElementById("manual-address");
+  const resetConfirmDialog = document.getElementById("reset-confirm-dialog");
   const adresseEl = document.getElementById("adresse");
   const mapEl = document.getElementById("map-frame");
   const mapLegendEl = document.getElementById("map-legend");
@@ -339,6 +365,27 @@
     REQUEST_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
   }
 
+  function reinitialiserApplication() {
+    if (activeRequest) {
+      resetConfirmDialog.returnValue = "";
+      resetConfirmDialog.showModal();
+      return;
+    }
+    appliquerReinitialisation();
+  }
+
+  function appliquerReinitialisation() {
+    try {
+      effacerDemandeSauvegardee();
+    } catch (_) {
+      afficher("Impossible de réinitialiser la demande. Le stockage local est inaccessible.", "err");
+      return;
+    }
+    fermerEcouteStatut();
+    if (completionTimer) window.clearTimeout(completionTimer);
+    window.location.reload();
+  }
+
   function fermerEcouteStatut() {
     if (statusSource) statusSource.close();
     statusSource = null;
@@ -392,14 +439,18 @@
       const statusTopic = localStorage.getItem("active_request_status_topic");
       const savedStatus = localStorage.getItem("active_request_status");
       const savedAddress = localStorage.getItem("active_request_address") || "";
+      const cachedAddress = adresseDepuisCacheLocal();
       const age = Date.now() - createdAt;
       const expectedTopic = new RegExp(`^${NTFY_TOPIC}_s_[a-f0-9]{32}$`);
       if (!Number.isFinite(createdAt) || age < 0 || age > REQUEST_MAX_AGE || !expectedTopic.test(statusTopic || "") || !["pending", "EN_ROUTE"].includes(savedStatus)) {
         effacerDemandeSauvegardee();
         return false;
       }
-      activeRequest = { id, createdAt, statusTopic, status: savedStatus, address: savedAddress };
+      const address = savedAddress || cachedAddress || adresseConfirmeeEnregistree();
+      activeRequest = { id, createdAt, statusTopic, status: savedStatus, address };
+      adresseEl.value = address;
       definirFormulaireVerrouille(true);
+      afficher("Demande en cours. Aucune nouvelle localisation GPS n’est nécessaire.", "ok");
       afficherEtatDemande(activeRequest, savedStatus);
       ecouterStatutDemande(activeRequest);
       return true;
@@ -464,6 +515,15 @@
     try {
       const address = localStorage.getItem(CONFIRMED_ADDRESS_KEY);
       return address ? address.trim() : "";
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function adresseDepuisCacheLocal() {
+    try {
+      const cache = JSON.parse(localStorage.getItem(CACHE_KEY));
+      return cache && typeof cache.address === "string" ? cache.address.split(",")[0].trim() : "";
     } catch (_) {
       return "";
     }
@@ -561,7 +621,7 @@
         adresse = adresseEnCache(position);
         if (adresse) {
           if (!adresseModifiee) adresseEl.value = adresse;
-          afficher("Merci à nouveau!", "ok");
+          afficher("Merci de refaire affaire avec nous!", "ok");
           btn.disabled = false;
           return;
         }
@@ -688,6 +748,10 @@
   }
 
   btn.addEventListener("click", envoyer);
+  document.getElementById("reset-app").addEventListener("click", reinitialiserApplication);
+  resetConfirmDialog.addEventListener("close", () => {
+    if (resetConfirmDialog.returnValue === "confirm") appliquerReinitialisation();
+  });
   document.addEventListener("DOMContentLoaded", restaurerDemandeActive);
   window.addEventListener("load", () => {
     if (!activeRequest) demanderPosition();
