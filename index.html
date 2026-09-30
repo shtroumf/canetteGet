@@ -83,6 +83,7 @@
   .legend-area { width: .9rem; height: .65rem; border: 2px solid #2e7d32; background: #4caf5080; }
   .legend-position { width: .75rem; height: .75rem; border: 2px solid #fff; border-radius: 50%; background: #1677d2; box-shadow: 0 0 0 1px #1677d2; }
   footer { display: grid; gap: .35rem; width: min(100%, 34rem); margin-top: auto; padding-top: .75rem; border-top: 1px solid #30363d; color: #9198a1; font-size: .85rem; }
+    footer .version { margin-left: .3rem; color: #aab2bc; font-size: .75rem; }
   footer a { color: #58a6ff; text-decoration: underline; text-underline-offset: .15em; }
   footer a:focus-visible { outline: 2px solid #58a6ff; outline-offset: 3px; }
   .err { color: #f85149 !important; }
@@ -142,7 +143,7 @@
   <p id="coordinates" hidden></p>
   <footer>
     <a href="explications.html">Comment fonctionne le service ?</a>
-    <small>© GetCannette</small>
+    <small>© GetCannette <span class="version">v1.2.0</span></small>
   </footer>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
@@ -152,8 +153,9 @@
   const NTFY_TOPIC = "shtroumfhotshotsunraidqc";
   const NTFY_BASE_URL = "https://ntfy.sh/";
   const REQUEST_MAX_AGE = 24 * 60 * 60 * 1000;
-  const REQUEST_STORAGE_KEYS = ["active_request_id", "active_request_created_at", "active_request_status_topic", "active_request_status"];
+  const REQUEST_STORAGE_KEYS = ["active_request_id", "active_request_created_at", "active_request_status_topic", "active_request_status", "active_request_address"];
   const CACHE_KEY = "canetteGet.location.v1";
+  const CONFIRMED_ADDRESS_KEY = "canetteGet.confirmedAddress.v1";
   const CACHE_RADIUS_METERS = 50;
   const SECTEUR_DESSERVI = [
     [46.8464834, -71.3968156],
@@ -275,9 +277,45 @@
     btn.disabled = verrouille;
   }
 
+  function messageAttenteCueillette(now = new Date()) {
+    const jour = now.getDay();
+    const debutMinutes = jour === 0 || jour === 6 ? 8 * 60 : 16 * 60;
+    const finMinutes = jour === 0 || jour === 6 ? 11 * 60 : 19 * 60;
+    const heureMinutes = now.getHours() * 60 + now.getMinutes();
+
+    if (heureMinutes >= debutMinutes && heureMinutes < finMinutes) {
+      const finPlage = new Date(now);
+      finPlage.setHours(Math.floor(finMinutes / 60), finMinutes % 60, 0, 0);
+      const minutesRestantes = Math.ceil((finPlage - now) / 60000);
+      const heures = Math.floor(minutesRestantes / 60);
+      const minutes = minutesRestantes % 60;
+      const delai = heures
+        ? `${heures} h${minutes ? ` ${minutes} min` : ""}`
+        : `${minutesRestantes} min`;
+      return `Nous passerons d’ici la fin de la plage, dans environ ${delai}.`;
+    }
+
+    for (let decalage = 0; decalage < 7; decalage++) {
+      const prochainJour = new Date(now);
+      prochainJour.setDate(now.getDate() + decalage);
+      const jourProchain = prochainJour.getDay();
+      const ouvertureMinutes = jourProchain === 0 || jourProchain === 6 ? 8 * 60 : 16 * 60;
+      const fermetureMinutes = jourProchain === 0 || jourProchain === 6 ? 11 * 60 : 19 * 60;
+      const ouverture = new Date(prochainJour);
+      ouverture.setHours(Math.floor(ouvertureMinutes / 60), ouvertureMinutes % 60, 0, 0);
+
+      if (ouverture > now) {
+        const jourRelatif = decalage === 0 ? "aujourd’hui" : "demain";
+        const debut = `${Math.floor(ouvertureMinutes / 60)} h`;
+        const fin = `${Math.floor(fermetureMinutes / 60)} h`;
+        return `Prochaine plage de cueillette : ${jourRelatif}, de ${debut} à ${fin}.`;
+      }
+    }
+  }
+
   function afficherEtatDemande(request, state) {
     const messages = {
-      pending: ["Demande reçue !", "Nous traiterons votre demande bientôt."],
+      pending: ["Demande reçue !", messageAttenteCueillette()],
       EN_ROUTE: ["🚴‍♀️ On s'en vient !", "Nous sommes en route vers votre adresse."],
       completed: ["🎉 Merci !", "Vos consignes ont été récupérées."]
     };
@@ -294,6 +332,7 @@
     localStorage.setItem("active_request_created_at", String(request.createdAt));
     localStorage.setItem("active_request_status_topic", request.statusTopic);
     localStorage.setItem("active_request_status", request.status);
+    localStorage.setItem("active_request_address", request.address);
   }
 
   function effacerDemandeSauvegardee() {
@@ -310,6 +349,9 @@
     if (!request) return;
     activeRequest = null;
     fermerEcouteStatut();
+    try {
+      if (request.address) localStorage.setItem(CONFIRMED_ADDRESS_KEY, request.address);
+    } catch (_) { /* Le suivi en mémoire reste affiché. */ }
     try { effacerDemandeSauvegardee(); } catch (_) { /* Le suivi en mémoire reste affiché. */ }
     afficherEtatDemande(request, "completed");
     definirFormulaireVerrouille(true);
@@ -349,13 +391,14 @@
       const createdAt = Number(localStorage.getItem("active_request_created_at"));
       const statusTopic = localStorage.getItem("active_request_status_topic");
       const savedStatus = localStorage.getItem("active_request_status");
+      const savedAddress = localStorage.getItem("active_request_address") || "";
       const age = Date.now() - createdAt;
       const expectedTopic = new RegExp(`^${NTFY_TOPIC}_s_[a-f0-9]{32}$`);
       if (!Number.isFinite(createdAt) || age < 0 || age > REQUEST_MAX_AGE || !expectedTopic.test(statusTopic || "") || !["pending", "EN_ROUTE"].includes(savedStatus)) {
         effacerDemandeSauvegardee();
         return false;
       }
-      activeRequest = { id, createdAt, statusTopic, status: savedStatus };
+      activeRequest = { id, createdAt, statusTopic, status: savedStatus, address: savedAddress };
       definirFormulaireVerrouille(true);
       afficherEtatDemande(activeRequest, savedStatus);
       ecouterStatutDemande(activeRequest);
@@ -366,7 +409,7 @@
     }
   }
 
-  function creerDemandeActive() {
+  function creerDemandeActive(address) {
     const randomBytes = new Uint8Array(16);
     crypto.getRandomValues(randomBytes);
     const token = Array.from(randomBytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -377,7 +420,8 @@
       id: `REQ-${createdAt.toString(36).toUpperCase()}-${token.slice(0, 6).toUpperCase()}`,
       createdAt,
       statusTopic,
-      status: "pending"
+      status: "pending",
+      address
     };
   }
 
@@ -414,6 +458,15 @@
       // Cache absent, invalide ou inaccessible : continuer avec le géocodage.
     }
     return null;
+  }
+
+  function adresseConfirmeeEnregistree() {
+    try {
+      const address = localStorage.getItem(CONFIRMED_ADDRESS_KEY);
+      return address ? address.trim() : "";
+    } catch (_) {
+      return "";
+    }
   }
 
   function afficherCarte(pos) {
@@ -472,8 +525,10 @@
     enCours = true;
     position = null;
     adresse = null;
-    adresseEl.value = "";
-    adresseModifiee = false;
+    const adresseConfirmee = adresseConfirmeeEnregistree() || adresseEl.value.trim();
+    adresseEl.value = adresseConfirmee;
+    adresseModifiee = Boolean(adresseConfirmee);
+    manualMode = false;
     zoneWarningEl.hidden = true;
     mapEl.style.display = "none";
     mapLegendEl.hidden = true;
@@ -483,6 +538,8 @@
     if (!("geolocation" in navigator)) {
       afficher("❌ Votre navigateur ne supporte pas la géolocalisation. Utilisez Chrome, Safari, Firefox ou Edge à jour.", "err");
       enCours = false;
+      manualMode = Boolean(adresseEl.value.trim());
+      btn.disabled = !manualMode;
       return;
     }
 
@@ -527,10 +584,11 @@
           2: "❌ Position indisponible. Vérifiez que la localisation / le GPS de l'appareil est activé.",
           3: "⏱️ Délai dépassé. Appuyer sur le bouton pour réessayer."
         };
+        manualMode = Boolean(adresseEl.value.trim());
         if (err.code === 1) {
           afficherAideGeolocalisation();
           afficher(msgs[err.code], "err");
-          btn.disabled = true;
+          btn.disabled = !manualMode;
           return;
         }
         afficher(msgs[err.code] || "❌ Erreur de géolocalisation.", "err");
@@ -553,7 +611,7 @@
     }
     let request;
     try {
-      request = creerDemandeActive();
+      request = creerDemandeActive(adresseFinale);
       sauvegarderDemande(request);
       activeRequest = request;
       definirFormulaireVerrouille(true);
@@ -574,6 +632,7 @@
       }
     }
     const consigneCueillette = document.querySelector('input[name="cueillette"]:checked').value;
+    const iconeConsigne = consigneCueillette.startsWith("Sonner svp") ? "🔔" : "🚪";
     const avertissementSecteur = position && !positionDansSecteur(position)
       ? "⚠️ Position à l’extérieur du secteur desservi; service non garanti.\n"
       : "";
@@ -585,7 +644,7 @@
       `Demande : ${request.id}\n` +
       `Adresse : ${adresseFinale}\n` +
       avertissementSecteur +
-      `Consigne pour la cueillette : ${consigneCueillette}\n` +
+      `Consigne pour la cueillette : ${iconeConsigne}\n` +
       detailsPosition;
 
     afficher(position && cacheEnregistre
