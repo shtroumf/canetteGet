@@ -57,6 +57,23 @@
   #status.err { color: #f85149; }
   #status.ok { color: #3fb950; }
   #zone-warning { width: min(100%, 34rem); padding: .7rem .85rem; border-left: 3px solid #e3b341; background: #2b2517; color: #f0d58c; font-size: .9rem; line-height: 1.45; text-align: left; }
+  #gps-help { display: grid; gap: .75rem; width: min(100%, 34rem); padding: .9rem 1rem; border: 1px solid #e3b341; border-left-width: 4px; border-radius: 6px; background: #fff3cd; color: #664d04; text-align: left; line-height: 1.45; }
+  #gps-help[hidden] { display: none; }
+  #gps-help h2 { font-size: 1rem; line-height: 1.35; }
+  #gps-help ol { display: grid; gap: .55rem; padding-left: 1.5rem; }
+  #gps-help li { padding-left: .1rem; }
+  .gps-step-icon { margin-right: .25rem; }
+  #manual-address { justify-self: start; min-height: 2.75rem; padding: .55rem .8rem; border: 1px solid #856404; border-radius: 6px; background: #fff; color: #593f00; font: inherit; font-weight: 700; cursor: pointer; }
+  #manual-address:hover { background: #fff8e1; }
+  #manual-address:focus-visible { outline: 3px solid #0969da; outline-offset: 2px; }
+    #request-status { width: min(100%, 34rem); padding: .9rem 1rem; border: 1px solid #3fb950; border-left-width: 4px; border-radius: 6px; background: #15251b; color: #e6edf3; text-align: left; line-height: 1.45; animation: status-in .2s ease-out; }
+    #request-status[hidden] { display: none; }
+    #request-status[data-state="en-route"] { border-color: #58a6ff; background: #142331; }
+    #request-status[data-state="completed"] { border-color: #3fb950; background: #15251b; }
+    #request-status p { margin-top: .25rem; }
+    #request-id { display: block; margin-top: .4rem; color: #aab2bc; font-size: .82rem; font-variant-numeric: tabular-nums; }
+    @keyframes status-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+    @media (prefers-reduced-motion: reduce) { #request-status { animation: none; } }
   #coordinates { color: #aab2bc; font-size: .85rem; font-variant-numeric: tabular-nums; }
   #map-card { width: min(100%, 36rem); }
   #map-frame { display: none; width: 100%; height: min(18rem, 40vh); min-height: 12rem; border: 1px solid #30363d; border-radius: 6px; background: #161b22; color: #e6edf3; }
@@ -85,6 +102,16 @@
 <body>
   <h1>♻️ Get Cannettes</h1>
   <p id="status" role="status" aria-live="polite"><span id="status-icon" aria-hidden="true"></span><span id="status-text">Initialisation…</span></p>
+  <section id="request-status" role="status" aria-live="polite" aria-atomic="true" hidden>
+    <strong id="request-status-title"></strong>
+    <p id="request-status-message"></p>
+    <small id="request-id"></small>
+  </section>
+  <section id="gps-help" role="region" aria-labelledby="gps-help-title" aria-live="polite" tabindex="-1" hidden>
+    <h2 id="gps-help-title">La localisation automatique est bloquée.</h2>
+    <ol id="gps-help-steps"></ol>
+    <button id="manual-address" type="button">Saisir mon adresse manuellement</button>
+  </section>
   <p id="zone-warning" role="alert" hidden>⚠️ Votre position semble se trouver à l’extérieur du secteur desservi. Le service ne peut pas être garanti pour cette adresse.</p>
   <section id="primary-actions" aria-label="Adresse et demande de cueillette">
     <div id="address-entry">
@@ -121,9 +148,11 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script>
   /* ⚙️ PERSONNALISATION : remplacez par VOTRE topic ntfy.
-     Si le topic est protégé, ajoutez "Authorization": "Bearer tk_..." dans les headers du POST. */
+      Cette page statique est publique : n'y placez jamais de jeton d'accès confidentiel. */
   const NTFY_TOPIC = "shtroumfhotshotsunraidqc";
-  const NTFY_URL = "https://ntfy.sh/" + NTFY_TOPIC;
+  const NTFY_BASE_URL = "https://ntfy.sh/";
+  const REQUEST_MAX_AGE = 24 * 60 * 60 * 1000;
+  const REQUEST_STORAGE_KEYS = ["active_request_id", "active_request_created_at", "active_request_status_topic", "active_request_status"];
   const CACHE_KEY = "canetteGet.location.v1";
   const CACHE_RADIUS_METERS = 50;
   const SECTEUR_DESSERVI = [
@@ -142,6 +171,13 @@
   const statusIconEl = document.getElementById("status-icon");
   const statusTextEl = document.getElementById("status-text");
   const zoneWarningEl = document.getElementById("zone-warning");
+  const requestStatusEl = document.getElementById("request-status");
+  const requestStatusTitleEl = document.getElementById("request-status-title");
+  const requestStatusMessageEl = document.getElementById("request-status-message");
+  const requestIdEl = document.getElementById("request-id");
+  const gpsHelpEl = document.getElementById("gps-help");
+  const gpsHelpStepsEl = document.getElementById("gps-help-steps");
+  const manualAddressBtn = document.getElementById("manual-address");
   const adresseEl = document.getElementById("adresse");
   const mapEl = document.getElementById("map-frame");
   const mapLegendEl = document.getElementById("map-legend");
@@ -153,13 +189,196 @@
   let adresse = null;    // adresse postale résolue
   let adresseModifiee = false;
   let enCours = false;   // anti-doublon de demande GPS
+  let activeRequest = null;
+  let statusSource = null;
+  let completionTimer = null;
+  let manualMode = false;
 
-  adresseEl.addEventListener("input", () => { adresseModifiee = true; });
+  adresseEl.addEventListener("input", () => {
+    adresseModifiee = true;
+    if (manualMode && !position) btn.disabled = !adresseEl.value.trim();
+  });
+
+  function getDevicePlatform() {
+    const userAgent = navigator.userAgent;
+    if (/iPhone|iPad|iPod/i.test(userAgent) || (/Macintosh/i.test(userAgent) && navigator.maxTouchPoints > 1)) return "ios";
+    if (/Android/i.test(userAgent)) return "android";
+    if (/Macintosh|Mac OS X/i.test(userAgent) && /Safari/i.test(userAgent) && !/Chrome|Chromium|Edg|Firefox/i.test(userAgent)) return "desktop-safari";
+    return "desktop-browser";
+  }
+
+  function afficherAideGeolocalisation() {
+    const platform = getDevicePlatform();
+    const userAgent = navigator.userAgent;
+    let steps;
+
+    if (platform === "ios") {
+      steps = [
+        ["⚙️", "Ouvrez Réglages, puis Confidentialité et sécurité."],
+        ["📍", "Touchez Service de localisation, puis Safari (ou le navigateur utilisé)."],
+        ["✅", "Autorisez la localisation pendant l’utilisation, puis rechargez cette page."]
+      ];
+    } else if (platform === "android") {
+      steps = [
+        ["🔒", "Dans Chrome, touchez l’icône à gauche de l’adresse du site."],
+        ["⚙️", "Ouvrez Autorisations du site, puis Localisation."],
+        ["✅", "Choisissez Autoriser et rechargez cette page."]
+      ];
+    } else if (platform === "desktop-safari") {
+      steps = [
+        ["🧭", "Dans Safari, ouvrez Safari > Réglages > Sites web."],
+        ["📍", "Sélectionnez Localisation dans la liste à gauche et repérez ce site."],
+        ["✅", "Choisissez Autoriser, puis rechargez cette page."]
+      ];
+    } else {
+      const browser = /Edg\//i.test(userAgent) ? "Edge" : /Firefox\//i.test(userAgent) ? "Firefox" : "Chrome";
+      const browserSettings = browser === "Edge" ? "Paramètres > Cookies et autorisations de site > Localisation" :
+        browser === "Firefox" ? "Paramètres > Vie privée et sécurité > Permissions > Localisation" :
+          "Paramètres > Confidentialité et sécurité > Paramètres des sites > Localisation";
+      steps = [
+        ["🔒", "Cliquez sur l’icône à gauche de l’adresse de cette page."],
+        ["⚙️", `Ouvrez les paramètres du site ou ${browserSettings}, puis Localisation.`],
+        ["✅", "Réglez l’accès sur Autoriser et rechargez cette page."]
+      ];
+    }
+
+    gpsHelpStepsEl.replaceChildren(...steps.map(([icon, text]) => {
+      const item = document.createElement("li");
+      const iconEl = document.createElement("span");
+      iconEl.className = "gps-step-icon";
+      iconEl.setAttribute("aria-hidden", "true");
+      iconEl.textContent = icon;
+      item.append(iconEl, document.createTextNode(text));
+      return item;
+    }));
+    gpsHelpEl.hidden = false;
+    gpsHelpEl.focus();
+  }
+
+  manualAddressBtn.addEventListener("click", () => {
+    manualMode = true;
+    gpsHelpEl.hidden = true;
+    afficher("Saisissez votre adresse pour continuer sans localisation automatique.");
+    btn.disabled = !adresseEl.value.trim();
+    adresseEl.focus();
+  });
 
   function afficher(texte, classe) {
     statusTextEl.textContent = texte;
     statusEl.className = classe || "";
     statusIconEl.textContent = classe === "err" ? "!" : classe === "ok" ? "✓" : "";
+  }
+
+  function definirFormulaireVerrouille(verrouille) {
+    adresseEl.disabled = verrouille;
+    document.querySelectorAll('input[name="cueillette"]').forEach((option) => { option.disabled = verrouille; });
+    btn.disabled = verrouille;
+  }
+
+  function afficherEtatDemande(request, state) {
+    const messages = {
+      pending: ["Demande reçue !", "Nous traiterons votre demande bientôt."],
+      EN_ROUTE: ["🚴‍♀️ On s'en vient !", "Nous sommes en route vers votre adresse."],
+      completed: ["🎉 Merci !", "Vos consignes ont été récupérées."]
+    };
+    const [title, message] = messages[state];
+    requestStatusEl.dataset.state = state === "EN_ROUTE" ? "en-route" : state;
+    requestStatusTitleEl.textContent = title;
+    requestStatusMessageEl.textContent = message;
+    requestIdEl.textContent = `Demande ${request.id}`;
+    requestStatusEl.hidden = false;
+  }
+
+  function sauvegarderDemande(request) {
+    localStorage.setItem("active_request_id", request.id);
+    localStorage.setItem("active_request_created_at", String(request.createdAt));
+    localStorage.setItem("active_request_status_topic", request.statusTopic);
+    localStorage.setItem("active_request_status", request.status);
+  }
+
+  function effacerDemandeSauvegardee() {
+    REQUEST_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
+  }
+
+  function fermerEcouteStatut() {
+    if (statusSource) statusSource.close();
+    statusSource = null;
+  }
+
+  function terminerDemande() {
+    const request = activeRequest;
+    if (!request) return;
+    activeRequest = null;
+    fermerEcouteStatut();
+    try { effacerDemandeSauvegardee(); } catch (_) { /* Le suivi en mémoire reste affiché. */ }
+    afficherEtatDemande(request, "completed");
+    definirFormulaireVerrouille(true);
+    completionTimer = window.setTimeout(() => {
+      requestStatusEl.hidden = true;
+      document.querySelector('input[name="cueillette"]').checked = true;
+      definirFormulaireVerrouille(false);
+      demanderPosition();
+    }, 6000);
+  }
+
+  function recevoirStatutDemande(message) {
+    if (!activeRequest || !message || message.event !== "message") return;
+    const nextStatus = String(message.message || "").trim();
+    if (nextStatus === "EN_ROUTE" && activeRequest.status === "pending") {
+      activeRequest.status = nextStatus;
+      try { sauvegarderDemande(activeRequest); } catch (_) { /* L'état courant reste disponible jusqu'au rechargement. */ }
+      afficherEtatDemande(activeRequest, nextStatus);
+    } else if (nextStatus === "COMPLETED") {
+      terminerDemande();
+    }
+  }
+
+  function ecouterStatutDemande(request) {
+    fermerEcouteStatut();
+    const streamUrl = `${NTFY_BASE_URL}${encodeURIComponent(request.statusTopic)}/sse?since=all`;
+    statusSource = new EventSource(streamUrl);
+    statusSource.onmessage = (event) => {
+      try { recevoirStatutDemande(JSON.parse(event.data)); } catch (_) { /* Ignorer les événements invalides. */ }
+    };
+  }
+
+  function restaurerDemandeActive() {
+    try {
+      const id = localStorage.getItem("active_request_id");
+      if (!id) return false;
+      const createdAt = Number(localStorage.getItem("active_request_created_at"));
+      const statusTopic = localStorage.getItem("active_request_status_topic");
+      const savedStatus = localStorage.getItem("active_request_status");
+      const age = Date.now() - createdAt;
+      const expectedTopic = new RegExp(`^${NTFY_TOPIC}_s_[a-f0-9]{32}$`);
+      if (!Number.isFinite(createdAt) || age < 0 || age > REQUEST_MAX_AGE || !expectedTopic.test(statusTopic || "") || !["pending", "EN_ROUTE"].includes(savedStatus)) {
+        effacerDemandeSauvegardee();
+        return false;
+      }
+      activeRequest = { id, createdAt, statusTopic, status: savedStatus };
+      definirFormulaireVerrouille(true);
+      afficherEtatDemande(activeRequest, savedStatus);
+      ecouterStatutDemande(activeRequest);
+      return true;
+    } catch (_) {
+      try { effacerDemandeSauvegardee(); } catch (_) { /* localStorage indisponible. */ }
+      return false;
+    }
+  }
+
+  function creerDemandeActive() {
+    const randomBytes = new Uint8Array(16);
+    crypto.getRandomValues(randomBytes);
+    const token = Array.from(randomBytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+    const statusTopic = `${NTFY_TOPIC}_s_${token}`;
+    if (statusTopic.length > 64) throw new Error("Le sujet ntfy est trop long pour créer un canal de suivi.");
+    const createdAt = Date.now();
+    return {
+      id: `REQ-${createdAt.toString(36).toUpperCase()}-${token.slice(0, 6).toUpperCase()}`,
+      createdAt,
+      statusTopic,
+      status: "pending"
+    };
   }
 
   function distanceMetres(a, b) {
@@ -273,6 +492,7 @@
       /* --- 2. Dès réception des coordonnées : traduction immédiate en adresse postale --- */
       async (pos) => {
         enCours = false;
+        gpsHelpEl.hidden = true;
         position = { lat: pos.coords.latitude, lon: pos.coords.longitude };
         const horsSecteur = !positionDansSecteur(position);
         zoneWarningEl.hidden = !horsSecteur;
@@ -303,10 +523,16 @@
       (err) => {
         enCours = false;
         const msgs = {
-          1: "❌ Partage de position refusé. Autorisez la localisation dans les réglages du navigateur, puis rechargez la page.",
+          1: "La localisation automatique est bloquée.",
           2: "❌ Position indisponible. Vérifiez que la localisation / le GPS de l'appareil est activé.",
           3: "⏱️ Délai dépassé. Appuyer sur le bouton pour réessayer."
         };
+        if (err.code === 1) {
+          afficherAideGeolocalisation();
+          afficher(msgs[err.code], "err");
+          btn.disabled = true;
+          return;
+        }
         afficher(msgs[err.code] || "❌ Erreur de géolocalisation.", "err");
         btn.disabled = false;
       },
@@ -316,12 +542,31 @@
 
   /* --- 3. Envoi de la notification ntfy (utilise l'adresse déjà résolue) --- */
   async function envoyer() {
-    if (!position) { demanderPosition(); return; }   // pas encore de GPS → on relance la demande
-    btn.disabled = true;
+    if (!position && !manualMode) { demanderPosition(); return; }
+    const adresseFinale = adresseEl.value.trim() || (position
+      ? `Coordonnées GPS : ${position.lat.toFixed(5)}, ${position.lon.toFixed(5)}`
+      : "");
+    if (!adresseFinale) {
+      afficher("Saisissez une adresse pour continuer sans localisation.", "err");
+      adresseEl.focus();
+      return;
+    }
+    let request;
+    try {
+      request = creerDemandeActive();
+      sauvegarderDemande(request);
+      activeRequest = request;
+      definirFormulaireVerrouille(true);
+      afficherEtatDemande(request, "pending");
+      ecouterStatutDemande(request);
+    } catch (e) {
+      afficher("Impossible d'activer le suivi de la demande. Vérifiez le stockage local et réessayez.", "err");
+      btn.disabled = false;
+      return;
+    }
 
-    const adresseFinale = adresseEl.value.trim() || `Coordonnées GPS : ${position.lat.toFixed(5)}, ${position.lon.toFixed(5)}`;
     let cacheEnregistre = true;
-    if (adresseEl.value.trim()) {
+    if (position && adresseEl.value.trim()) {
       try {
         localStorage.setItem(CACHE_KEY, JSON.stringify({ ...position, address: adresseFinale }));
       } catch (_) {
@@ -329,43 +574,65 @@
       }
     }
     const consigneCueillette = document.querySelector('input[name="cueillette"]:checked').value;
-    const avertissementSecteur = positionDansSecteur(position)
-      ? ""
-      : "⚠️ Position à l’extérieur du secteur desservi; service non garanti.\n";
+    const avertissementSecteur = position && !positionDansSecteur(position)
+      ? "⚠️ Position à l’extérieur du secteur desservi; service non garanti.\n"
+      : "";
+    const detailsPosition = position
+      ? `${position.lat.toFixed(5)}, ${position.lon.toFixed(5)}\nhttps://www.openstreetmap.org/?mlat=${position.lat}&mlon=${position.lon}#map=17/${position.lat}/${position.lon}`
+      : "Localisation non fournie (adresse saisie manuellement).";
     const message =
       `🧺 Un visiteur a cliqué !\n\n` +
+      `Demande : ${request.id}\n` +
       `Adresse : ${adresseFinale}\n` +
       avertissementSecteur +
       `Consigne pour la cueillette : ${consigneCueillette}\n` +
-      `${position.lat.toFixed(5)}, ${position.lon.toFixed(5)}\n` +
-      `https://www.openstreetmap.org/?mlat=${position.lat}&mlon=${position.lon}#map=17/${position.lat}/${position.lon}`;
+      detailsPosition;
 
-    afficher(cacheEnregistre
+    afficher(position && cacheEnregistre
       ? "Adresse enregistrée sur cet appareil. Envoi de la notification…"
-      : "Envoi de la notification… (le cache local est indisponible)", "loading");
+      : position
+        ? "Envoi de la notification… (le cache local est indisponible)"
+        : "Envoi de la demande avec l’adresse saisie…", "loading");
     try {
-      const r = await fetch(NTFY_URL, {
+      const statusUrl = `${NTFY_BASE_URL}${encodeURIComponent(request.statusTopic)}`;
+      const r = await fetch(NTFY_BASE_URL, {
         method: "POST",
-        headers: {
-          "Title": "Nouvelle cueillette de consignes",
-          "Tags": "basket",
-          "Priority": "high"
-          // "Authorization": "Bearer tk_votre_token"   // ← si topic protégé
-        },
-        body: message
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic: NTFY_TOPIC,
+          title: "Nouvelle cueillette de consignes",
+          tags: ["basket"],
+          priority: 4,
+          message,
+          actions: [
+            { action: "http", label: "🚴 En route", url: statusUrl, method: "POST", body: "EN_ROUTE", clear: true },
+            { action: "http", label: "✅ Terminé", url: statusUrl, method: "POST", body: "COMPLETED", clear: true }
+          ]
+        })
       });
       if (!r.ok) throw new Error("HTTP " + r.status);
-      afficher(cacheEnregistre
-        ? "Notification envoyée ! Adresse conservée pour la prochaine demande."
-        : "Notification envoyée !", "ok");
+      if (activeRequest === request) {
+        afficher(position && cacheEnregistre
+          ? "Notification envoyée ! Adresse conservée pour la prochaine demande."
+          : "Notification envoyée !", "ok");
+      }
     } catch (e) {
+      if (activeRequest === request) {
+        activeRequest = null;
+        fermerEcouteStatut();
+        requestStatusEl.hidden = true;
+        try { effacerDemandeSauvegardee(); } catch (_) { /* Ignorer si le stockage est inaccessible. */ }
+        definirFormulaireVerrouille(false);
+      }
       afficher("⚠️ L'envoi a échoué (" + e.message + "). Réessayer avec le bouton.", "err");
-      btn.disabled = false;
     }
   }
 
   btn.addEventListener("click", envoyer);
-  window.addEventListener("load", demanderPosition);   // ← déclenche le GPS au chargement
+  document.addEventListener("DOMContentLoaded", restaurerDemandeActive);
+  window.addEventListener("load", () => {
+    if (!activeRequest) demanderPosition();
+  });
 </script>
 </body>
 </html>
