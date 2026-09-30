@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Consignes — Cueillette</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { min-height: 100%; }
@@ -26,6 +27,12 @@
   #adresse::placeholder { color: #9198a1; }
   #adresse:focus { outline: 2px solid #58a6ff; outline-offset: 2px; }
   #address-help { display: block; margin-top: .25rem; color: #9198a1; font-size: .8rem; }
+  #pickup-options { display: grid; gap: .5rem; margin-top: .75rem; border: 0; }
+  #pickup-options legend { margin-bottom: .4rem; color: #e6edf3; font-size: .9rem; font-weight: 600; }
+  .pickup-option { display: flex; align-items: center; gap: .65rem; min-height: 3.25rem; padding: .65rem .75rem; border: 1px solid #697582; border-radius: 6px; background: #161b22; color: #e6edf3; font-size: .9rem; line-height: 1.35; cursor: pointer; }
+  .pickup-option:has(input:checked) { border-color: #3fb950; background: #15251b; }
+  .pickup-option input { flex: 0 0 auto; width: 1.25rem; height: 1.25rem; accent-color: #2ea043; }
+  .pickup-option input:focus-visible { outline: 2px solid #58a6ff; outline-offset: 3px; }
   #btn {
     width: 100%;
     min-height: 3.5rem;
@@ -42,24 +49,28 @@
   #btn:hover:not(:disabled) { background: #3fb950; }
   #btn:focus-visible { outline: 3px solid #58a6ff; outline-offset: 2px; }
   #btn:disabled { background: #30363d; color: #8b949e; cursor: not-allowed; }
-  #status { min-height: 2.5em; font-size: .95rem; color: #9198a1; max-width: 34em; line-height: 1.4; }
+  #status { display: flex; align-items: center; justify-content: center; gap: .5rem; width: min(100%, 34rem); min-height: 1.5em; font-size: .95rem; color: #9198a1; line-height: 1.4; }
+  #status-icon { flex: 0 0 auto; }
+  #status-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   @keyframes spin { to { transform: rotate(360deg); } }
-  #progress { display: grid; gap: .45rem; width: min(100%, 34rem); list-style: none; text-align: left; }
-  #progress li { display: grid; grid-template-columns: 1.25rem 1fr; column-gap: .45rem; color: #737d88; font-size: .9rem; line-height: 1.4; }
-  #progress li::before { grid-row: span 2; content: "•"; text-align: center; }
-  #progress li.current { color: #e3b341; }
-  #progress li.current::before { align-self: start; justify-self: center; width: .72rem; height: .72rem; margin: .12rem; border: 2px solid #5b4d2b; border-top-color: #e3b341; border-radius: 50%; content: ""; animation: spin .8s linear infinite; }
-  #progress li.done { color: #3fb950; }
-  #progress li.done::before { content: "✓"; }
-  #progress li.error { color: #f85149; }
-  #progress li.error::before { content: "!"; }
-  #progress small { color: #9198a1; }
+  #status.loading #status-icon { width: .8rem; height: .8rem; border: 2px solid #5b4d2b; border-top-color: #e3b341; border-radius: 50%; animation: spin .8s linear infinite; }
+  #status.err { color: #f85149; }
+  #status.ok { color: #3fb950; }
+  #zone-warning { width: min(100%, 34rem); padding: .7rem .85rem; border-left: 3px solid #e3b341; background: #2b2517; color: #f0d58c; font-size: .9rem; line-height: 1.45; text-align: left; }
   #coordinates { color: #aab2bc; font-size: .85rem; font-variant-numeric: tabular-nums; }
   #map-card { width: min(100%, 36rem); }
-  #map-frame { display: none; width: 100%; height: min(18rem, 40vh); min-height: 12rem; border: 1px solid #30363d; border-radius: 6px; background: #161b22; }
+  #map-frame { display: none; width: 100%; height: min(18rem, 40vh); min-height: 12rem; border: 1px solid #30363d; border-radius: 6px; background: #161b22; color: #e6edf3; }
+  #map-legend { display: flex; justify-content: center; flex-wrap: wrap; gap: .5rem 1rem; padding-top: .45rem; color: #aab2bc; font-size: .8rem; }
+  #map-legend[hidden] { display: none; }
+  #map-legend span { display: inline-flex; align-items: center; gap: .35rem; }
+  .legend-area { width: .9rem; height: .65rem; border: 2px solid #2e7d32; background: #4caf5080; }
+  .legend-position { width: .75rem; height: .75rem; border: 2px solid #fff; border-radius: 50%; background: #1677d2; box-shadow: 0 0 0 1px #1677d2; }
+  footer { display: grid; gap: .35rem; width: min(100%, 34rem); margin-top: auto; padding-top: .75rem; border-top: 1px solid #30363d; color: #9198a1; font-size: .85rem; }
+  footer a { color: #58a6ff; text-decoration: underline; text-underline-offset: .15em; }
+  footer a:focus-visible { outline: 2px solid #58a6ff; outline-offset: 3px; }
   .err { color: #f85149 !important; }
   .ok  { color: #3fb950 !important; }
-  @media (prefers-reduced-motion: reduce) { #progress li.current::before { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { #status.loading #status-icon { animation: none; } }
   @media (max-width: 480px) { #map-frame { height: min(15rem, 38vh); } #btn { font-size: 1rem; } }
   @media (orientation: landscape) and (max-height: 500px) {
     body { gap: .4rem; padding: .4rem max(.75rem, env(safe-area-inset-left)) .75rem; }
@@ -67,33 +78,47 @@
     #primary-actions { grid-template-columns: minmax(0, 1fr) minmax(12rem, .8fr); align-items: end; gap: .5rem; padding: .35rem .5rem; }
     #address-entry { min-width: 0; }
     #btn { min-height: 3.25rem; }
-    #progress { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .25rem .75rem; }
     #map-frame { height: 12rem; min-height: 10rem; }
   }
 </style>
 </head>
 <body>
-  <h1>♻️ Consignes</h1>
+  <h1>♻️ Get Cannettes</h1>
+  <p id="status" role="status" aria-live="polite"><span id="status-icon" aria-hidden="true"></span><span id="status-text">Initialisation…</span></p>
+  <p id="zone-warning" role="alert" hidden>⚠️ Votre position semble se trouver à l’extérieur du secteur desservi. Le service ne peut pas être garanti pour cette adresse.</p>
   <section id="primary-actions" aria-label="Adresse et demande de cueillette">
     <div id="address-entry">
       <label id="address-label" for="adresse">Adresse :</label>
       <input id="adresse" type="text" placeholder="Ex. 123 rue Principale" autocomplete="address-line1" autocapitalize="words" enterkeyhint="done" aria-describedby="address-help">
       <small id="address-help">Numéro civique et nom de rue seulement.</small>
+      <fieldset id="pickup-options">
+        <legend>Préfrence pour la cueillette </legend>
+        <label class="pickup-option">
+          <input type="radio" name="cueillette" value="Je laisse mes consignes près de la porte d’entrée." checked>
+          <span>Je laisse mes consignes près de la porte d’entrée.</span>
+        </label>
+        <label class="pickup-option">
+          <input type="radio" name="cueillette" value="Sonner svp, je veux vous rencontrer.">
+          <span>Sonner svp, je veux vous rencontrer.</span>
+        </label>
+      </fieldset>
     </div>
     <button id="btn" disabled>Venez cueillir mes consignes !</button>
   </section>
-  <p id="status" role="status" aria-live="polite">Initialisation…</p>
-  <ol id="progress" aria-label="Progression du chargement" aria-live="polite" aria-atomic="false">
-    <li><span>Préparation de la page</span><small>En attente</small></li>
-    <li><span>Acquisition de la position GPS</span><small>En attente</small></li>
-    <li><span>Réception des coordonnées</span><small>En attente</small></li>
-    <li><span>Conversion en adresse postale</span><small>En attente</small></li>
-  </ol>
   <section id="map-card" aria-label="Votre position sur la carte">
-    <iframe id="map-frame" title="Carte indiquant votre position" loading="lazy" referrerpolicy="no-referrer"></iframe>
+    <div id="map-frame" role="region" aria-label="Carte indiquant votre position et le secteur desservi" aria-describedby="map-legend"></div>
+    <div id="map-legend" hidden>
+      <span><i class="legend-area" aria-hidden="true"></i>Secteur desservi</span>
+      <span><i class="legend-position" aria-hidden="true"></i>Votre position estimée</span>
+    </div>
   </section>
   <p id="coordinates" hidden></p>
+  <footer>
+    <a href="explications.html">Comment fonctionne le service ?</a>
+    <small>© GetCannette</small>
+  </footer>
 
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script>
   /* ⚙️ PERSONNALISATION : remplacez par VOTRE topic ntfy.
      Si le topic est protégé, ajoutez "Authorization": "Bearer tk_..." dans les headers du POST. */
@@ -101,14 +126,29 @@
   const NTFY_URL = "https://ntfy.sh/" + NTFY_TOPIC;
   const CACHE_KEY = "canetteGet.location.v1";
   const CACHE_RADIUS_METERS = 50;
+  const SECTEUR_DESSERVI = [
+    [46.8464834, -71.3968156],
+    [46.8416901, -71.390187],
+    [46.8471738, -71.370735],
+    [46.8523577, -71.3778403],
+    [46.8580618, -71.3859899],
+    [46.8532685, -71.3932325],
+    [46.8495904, -71.3988612],
+    [46.8464834, -71.3968156]
+  ];
 
   const btn = document.getElementById("btn");
   const statusEl = document.getElementById("status");
+  const statusIconEl = document.getElementById("status-icon");
+  const statusTextEl = document.getElementById("status-text");
+  const zoneWarningEl = document.getElementById("zone-warning");
   const adresseEl = document.getElementById("adresse");
   const mapEl = document.getElementById("map-frame");
+  const mapLegendEl = document.getElementById("map-legend");
   const coordinatesEl = document.getElementById("coordinates");
-  const progressItems = Array.from(document.querySelectorAll("#progress li"));
 
+  let sectorMap = null;
+  let positionMarker = null;
   let position = null;   // { lat, lon } une fois le GPS reçu
   let adresse = null;    // adresse postale résolue
   let adresseModifiee = false;
@@ -117,24 +157,9 @@
   adresseEl.addEventListener("input", () => { adresseModifiee = true; });
 
   function afficher(texte, classe) {
-    statusEl.textContent = texte;
+    statusTextEl.textContent = texte;
     statusEl.className = classe || "";
-  }
-
-  function mettreAJourProgression(etape, detail, etat = "current") {
-    progressItems.forEach((item, index) => {
-      const note = item.querySelector("small");
-      if (index < etape || (index === etape && etat === "done")) {
-        item.className = "done";
-        note.textContent = index === etape ? detail : "Terminé";
-      } else if (index === etape) {
-        item.className = etat === "error" ? "error" : "current";
-        note.textContent = detail;
-      } else {
-        item.className = "";
-        note.textContent = "En attente";
-      }
-    });
+    statusIconEl.textContent = classe === "err" ? "!" : classe === "ok" ? "✓" : "";
   }
 
   function distanceMetres(a, b) {
@@ -144,6 +169,18 @@
     const valeur = Math.sin(dLat / 2) ** 2 +
       Math.cos(radians(a.lat)) * Math.cos(radians(b.lat)) * Math.sin(dLon / 2) ** 2;
     return 6371000 * 2 * Math.atan2(Math.sqrt(valeur), Math.sqrt(1 - valeur));
+  }
+
+  function positionDansSecteur(pos) {
+    let dedans = false;
+    for (let i = 0, j = SECTEUR_DESSERVI.length - 1; i < SECTEUR_DESSERVI.length; j = i++) {
+      const [latI, lonI] = SECTEUR_DESSERVI[i];
+      const [latJ, lonJ] = SECTEUR_DESSERVI[j];
+      const croise = (latI > pos.lat) !== (latJ > pos.lat) &&
+        pos.lon < ((lonJ - lonI) * (pos.lat - latI)) / (latJ - latI) + lonI;
+      if (croise) dedans = !dedans;
+    }
+    return dedans;
   }
 
   function adresseEnCache(pos) {
@@ -161,10 +198,40 @@
   }
 
   function afficherCarte(pos) {
-    const marge = 0.004;
-    const bbox = `${pos.lon - marge},${pos.lat - marge},${pos.lon + marge},${pos.lat + marge}`;
-    mapEl.src = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${pos.lat},${pos.lon}`;
     mapEl.style.display = "block";
+    if (typeof L === "undefined") {
+      mapEl.textContent = "Carte indisponible pour le moment.";
+      return;
+    }
+
+    if (!sectorMap) {
+      sectorMap = L.map(mapEl, { scrollWheelZoom: false });
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+      }).addTo(sectorMap);
+      L.polygon(SECTEUR_DESSERVI, {
+        color: "#2e7d32",
+        fillColor: "#4caf50",
+        fillOpacity: 0.35,
+        weight: 3
+      }).addTo(sectorMap);
+      positionMarker = L.circleMarker([pos.lat, pos.lon], {
+        radius: 8,
+        color: "#fff",
+        weight: 2,
+        fillColor: "#1677d2",
+        fillOpacity: 1
+      }).addTo(sectorMap).bindPopup("Votre position estimée");
+    } else {
+      positionMarker.setLatLng([pos.lat, pos.lon]);
+    }
+
+    mapLegendEl.hidden = false;
+    sectorMap.fitBounds(L.latLngBounds(SECTEUR_DESSERVI).extend([pos.lat, pos.lon]), {
+      padding: [20, 20],
+      maxZoom: 15
+    });
+    sectorMap.invalidateSize();
   }
 
   /* --- Géocodage inversé (OpenStreetMap / Nominatim, gratuit, sans clé) --- */
@@ -188,64 +255,57 @@
     adresse = null;
     adresseEl.value = "";
     adresseModifiee = false;
+    zoneWarningEl.hidden = true;
     mapEl.style.display = "none";
+    mapLegendEl.hidden = true;
     coordinatesEl.hidden = true;
     btn.disabled = true;
 
     if (!("geolocation" in navigator)) {
       afficher("❌ Votre navigateur ne supporte pas la géolocalisation. Utilisez Chrome, Safari, Firefox ou Edge à jour.", "err");
-      mettreAJourProgression(1, "Géolocalisation non prise en charge", "error");
       enCours = false;
       return;
     }
 
-    mettreAJourProgression(0, "Page chargée", "done");
-    mettreAJourProgression(1, "Demande envoyée au navigateur; attente du GPS…");
-    afficher("La page est prête. En attente de l’autorisation et de la position GPS…");
+    afficher("En attente de l’autorisation et de la position GPS…", "loading");
 
     navigator.geolocation.getCurrentPosition(
       /* --- 2. Dès réception des coordonnées : traduction immédiate en adresse postale --- */
       async (pos) => {
         enCours = false;
         position = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        const horsSecteur = !positionDansSecteur(position);
+        zoneWarningEl.hidden = !horsSecteur;
         afficherCarte(position);
         coordinatesEl.textContent = `Coordonnées reçues : ${position.lat.toFixed(6)}, ${position.lon.toFixed(6)} (précision estimée ±${Math.round(pos.coords.accuracy)} m)`;
         coordinatesEl.hidden = false;
-        mettreAJourProgression(1, "Position reçue du navigateur", "done");
-        mettreAJourProgression(2, "Latitude et longitude disponibles", "done");
 
-        mettreAJourProgression(3, "Vérification d’une adresse enregistrée…");
-        afficher("Position GPS obtenue. Vérification de l’adresse enregistrée…");
+        afficher("Vérification d’une adresse enregistrée…", "loading");
         adresse = adresseEnCache(position);
         if (adresse) {
           if (!adresseModifiee) adresseEl.value = adresse;
-          mettreAJourProgression(3, "Adresse réutilisée depuis le cache", "done");
-          afficher("Adresse récupérée du cache. Vérifiez-la ou corrigez-la avant de continuer.", "ok");
+          afficher("Merci à nouveau!", "ok");
           btn.disabled = false;
           return;
         }
 
-        mettreAJourProgression(3, "Recherche de l’adresse auprès d’OpenStreetMap…");
-        afficher("Coordonnées GPS reçues.");
+        afficher("Recherche de l’adresse…", "loading");
         try {
           adresse = await reverseGeocode(position.lat, position.lon);
           if (!adresseModifiee) adresseEl.value = adresse;
-          mettreAJourProgression(3, "Adresse postale trouvée", "done");
-          afficher("Adresse trouvée. Vérifiez-la ou corrigez-la, puis appuyez sur le bouton.", "ok");
+          afficher("Vérifier l'adresse, sélectionner une option puis appuyez sur le bouton.", "ok");
         } catch (e) {
           adresse = null;
-          mettreAJourProgression(3, "Conversion impossible; saisie manuelle possible", "error");
-          afficher("Adresse introuvable (" + e.message + "). Vous pouvez la saisir manuellement; sinon les coordonnées GPS seront utilisées.", "err");
+          afficher("Adresse introuvable (" + e.message + "). Veuillez saisir manuellement.", "err");
         }
         btn.disabled = false;
       },
       (err) => {
         enCours = false;
-        mettreAJourProgression(1, "Position GPS non obtenue", "error");
         const msgs = {
           1: "❌ Partage de position refusé. Autorisez la localisation dans les réglages du navigateur, puis rechargez la page.",
-          2: "❌ Position indisponible. Vérifiez que la localisation / le GPS du téléphone est activé.",
-          3: "⏱️ Délai dépassé. Touchez le bouton pour réessayer."
+          2: "❌ Position indisponible. Vérifiez que la localisation / le GPS de l'appareil est activé.",
+          3: "⏱️ Délai dépassé. Appuyer sur le bouton pour réessayer."
         };
         afficher(msgs[err.code] || "❌ Erreur de géolocalisation.", "err");
         btn.disabled = false;
@@ -268,15 +328,21 @@
         cacheEnregistre = false;
       }
     }
+    const consigneCueillette = document.querySelector('input[name="cueillette"]:checked').value;
+    const avertissementSecteur = positionDansSecteur(position)
+      ? ""
+      : "⚠️ Position à l’extérieur du secteur desservi; service non garanti.\n";
     const message =
       `🧺 Un visiteur a cliqué !\n\n` +
       `Adresse : ${adresseFinale}\n` +
+      avertissementSecteur +
+      `Consigne pour la cueillette : ${consigneCueillette}\n` +
       `${position.lat.toFixed(5)}, ${position.lon.toFixed(5)}\n` +
       `https://www.openstreetmap.org/?mlat=${position.lat}&mlon=${position.lon}#map=17/${position.lat}/${position.lon}`;
 
     afficher(cacheEnregistre
       ? "Adresse enregistrée sur cet appareil. Envoi de la notification…"
-      : "Envoi de la notification… (le cache local est indisponible)");
+      : "Envoi de la notification… (le cache local est indisponible)", "loading");
     try {
       const r = await fetch(NTFY_URL, {
         method: "POST",

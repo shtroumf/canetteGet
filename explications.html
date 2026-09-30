@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Comment fonctionne Get Cannettes</title>
+  
+  <!-- Feuilles de style Leaflet pour la carte du secteur -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  
+  <style>
+    :root {
+      --bg-color: #f8f9fa;
+      --card-bg: #ffffff;
+      --primary: #2e7d32;
+      --primary-hover: #1b5e20;
+      --text-main: #212529;
+      --text-muted: #495057;
+      --border-color: #dee2e6;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-color: #121212;
+        --card-bg: #1e1e1e;
+        --primary: #4caf50;
+        --primary-hover: #81c784;
+        --text-main: #f8f9fa;
+        --text-muted: #ced4da;
+        --border-color: #444444;
+      }
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      margin: 0;
+      padding: 1.5rem 1rem;
+    }
+
+    .container {
+      max-width: 680px;
+      margin: 0 auto;
+      background-color: var(--card-bg);
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+      border: 1px solid var(--border-color);
+    }
+
+    h1 {
+      color: var(--primary);
+      margin-top: 0;
+      font-size: 1.75rem;
+    }
+
+    h2 {
+      font-size: 1.25rem;
+      margin-top: 1.75rem;
+      border-bottom: 2px solid var(--border-color);
+      padding-bottom: 0.3rem;
+    }
+
+    ol, ul {
+      padding-left: 1.25rem;
+    }
+
+    li {
+      margin-bottom: 0.75rem;
+    }
+
+    .about-box {
+      background-color: rgba(46, 125, 50, 0.08);
+      border-left: 4px solid var(--primary);
+      padding: 1rem;
+      margin-bottom: 1.5rem;
+      border-radius: 0 8px 8px 0;
+    }
+
+    .badge-list {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin: 0.5rem 0 1rem 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .badge-item {
+      background-color: rgba(46, 125, 50, 0.15);
+      color: var(--primary);
+      padding: 0.4rem 0.8rem;
+      border-radius: 20px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      margin-bottom: 0;
+    }
+
+    #sector-map {
+      height: 260px;
+      width: 100%;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      margin-top: 1rem;
+      z-index: 1;
+    }
+
+    .callout {
+      background-color: rgba(0, 0, 0, 0.03);
+      border-left: 4px solid var(--primary);
+      padding: 0.8rem 1rem;
+      margin: 1rem 0;
+      border-radius: 0 4px 4px 0;
+    }
+
+    a.button-back {
+      display: inline-block;
+      background-color: var(--primary);
+      color: #ffffff;
+      text-decoration: none;
+      padding: 0.6rem 1.2rem;
+      border-radius: 6px;
+      font-weight: 600;
+      margin-top: 1.5rem;
+    }
+
+    a.button-back:hover, a.button-back:focus {
+      background-color: var(--primary-hover);
+    }
+
+    a:focus-visible {
+      outline: 3px solid var(--primary);
+      outline-offset: 2px;
+    }
+  </style>
+</head>
+<body>
+
+  <main class="container">
+    <h1>À propos de Get Cannettes</h1>
+
+    <div class="about-box">
+      <p><strong>Qui sommes-nous ?</strong></p>
+      <p>Get Cannettes est né de l'initiative de deux jeunes filles de 11 et 12 ans. Nous avons décidé de prendre nos finances en mains et d'utiliser notre temps libre pour amasser des cannettes — et pas de la bande, de l'argent !</p>
+      <p>Et en plus, qui a le temps de s'occuper d'aller porter des cannettes vides ? Laissez-nous nous en occuper !</p>
+      <p><strong>Nos moments de passage :</strong></p>
+      <ul>
+        <li>Les soirs de semaine (avant 19 h)</li>
+        <li>Les matinées de fin de semaine</li>
+      </ul>
+    </div>
+
+    <h2>Secteur desservi</h2>
+    <p>Nous desservons le secteur de <strong>Montchâtel (G2A)</strong>.</p>
+    
+    <!-- Carte interactive avec la zone surlignée -->
+    <div id="sector-map" aria-label="Carte du secteur Montchâtel surligné en vert"></div>
+
+    <h2>Consignes acceptées</h2>
+    <p>Nous ramassons <strong>tous les contenants consignés</strong> portant un code-barres :</p>
+    <ul class="badge-list">
+      <li class="badge-item">🥤 Cannettes en aluminium</li>
+      <li class="badge-item">🍾 Bouteilles en verre</li>
+      <li class="badge-item">🍾 Bouteilles en plastique</li>
+    </ul>
+
+    <h2>Instructions pour le dépôt</h2>
+    <ul>
+      <li><strong>Près de la porte :</strong> Vous pouvez laisser vos sacs de consignes bien fermés directement près de la porte d'entrée.</li>
+      <li><strong>Sonner à la porte :</strong> Si vous préférez qu'on sonne chez vous lors de notre passage, cochez la case prévue à cet effet lors de votre demande.</li>
+    </ul>
+
+    <h2>Comment fonctionne l'application ?</h2>
+    <ol>
+      <li><strong>Autoriser la localisation :</strong> Au chargement, l'application demande l'accès à votre position GPS.</li>
+      <li><strong>Affichage sur la carte :</strong> Votre position s'affiche sur une carte OpenStreetMap.</li>
+      <li><strong>Recherche d'adresse :</strong> L'adresse postale est détectée automatiquement grâce au service OpenStreetMap Nominatim.</li>
+      <li><strong>Vérification :</strong> Vous pouvez vérifier et ajuster votre adresse, puis cocher l'option pour faire sonner à la porte si souhaité.</li>
+      <li><strong>Envoi :</strong> En confirmant, la demande nous est directement envoyée.</li>
+    </ol>
+
+    <h2>Autorisations et gestion des erreurs</h2>
+    <ul>
+      <li><strong>Accès au GPS :</strong> Nécessaire pour détecter automatiquement le lieu de cueillette. Si refusé, l'adresse peut être écrite manuellement.</li>
+      <li><strong>Si l'adresse n'est pas trouvée :</strong> Vous pouvez saisir votre adresse manuellement avant de valider.</li>
+    </ul>
+
+    <h2>Confidentialité et utilisation des données</h2>
+    <div class="callout">
+      <p>Transparence sur vos données :</p>
+      <ul>
+        <li><strong>Position GPS :</strong> Sert uniquement à afficher la carte et trouver votre adresse au moment de la demande.</li>
+        <li><strong>Stockage local :</strong> Si vous réutilisez l'application au même endroit (à moins de 50 mètres), l'adresse précédente enregistrée dans votre navigateur est réutilisée pour vous éviter de la ressaisir.</li>
+        <li><strong>Transmission :</strong> L'adresse saisie (ou les coordonnées GPS) ainsi qu'un lien vers la carte sont transmis à notre téléphone via le service <em>ntfy</em>.</li>
+      </ul>
+    </div>
+
+    <a href="index.html" class="button-back">← Retour à l'application</a>
+  </main>
+
+  <!-- Script Leaflet pour afficher la carte du secteur Montchâtel surlignée -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      // Coordonnées du secteur Montchâtel (G2A)
+      var lat = 46.8520;
+      var lng = -71.3650;
+
+      // Initialisation de la carte
+      var map = L.map('sector-map', {
+        scrollWheelZoom: false
+      }).setView([lat, lng], 13);
+
+      // Fond de carte OpenStreetMap
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+      }).addTo(map);
+
+      // Polygone délimitant le secteur Montchâtel (G2A) surligné en vert
+      var montchatelPolygon = [
+        [46.8464834, -71.3968156],
+        [46.8416901, -71.390187],
+        [46.8471738, -71.370735],
+        [46.8523577, -71.3778403],
+        [46.8580618, -71.3859899],
+        [46.8532685, -71.3932325],
+        [46.8495904, -71.3988612],
+        [46.8464834, -71.3968156]
+      ];
+
+      var sectorArea = L.polygon(montchatelPolygon, {
+        color: '#2e7d32',
+        fillColor: '#4caf50',
+        fillOpacity: 0.35,
+        weight: 3
+      }).addTo(map);
+
+      sectorArea.bindPopup("<b>Secteur Montchâtel (G2A)</b><br>Zone principale de cueillette Get Cannettes.");
+      map.fitBounds(sectorArea.getBounds(), { padding: [20, 20] });
+    });
+  </script>
+
+</body>
+</html>
