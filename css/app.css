@@ -1,0 +1,105 @@
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { min-height: 100%; }
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: .75rem;
+    background: #0d1117;
+    color: #e6edf3;
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    padding: max(.75rem, env(safe-area-inset-top)) 1rem max(1rem, env(safe-area-inset-bottom));
+    text-align: center;
+  }
+  h1 { font-size: 1.5rem; font-weight: 600; letter-spacing: 0; }
+  #primary-actions { position: sticky; top: 0; z-index: 5; display: grid; gap: .65rem; width: min(100%, 34rem); padding: .5rem; border-bottom: 1px solid #30363d; background: #0d1117; text-align: left; }
+  #address-label { display: block; margin-bottom: .3rem; color: #e6edf3; font-size: .95rem; font-weight: 600; }
+  #adresse { display: block; width: 100%; min-height: 3.25rem; padding: .7rem .8rem; border: 1px solid #697582; border-radius: 6px; background: #161b22; color: #e6edf3; font: inherit; line-height: 1.3; }
+  #adresse::placeholder { color: #9198a1; }
+  #adresse:focus { outline: 2px solid #58a6ff; outline-offset: 2px; }
+  #address-help { display: block; margin-top: .25rem; color: #9198a1; font-size: .8rem; }
+  #pickup-options { display: grid; gap: .5rem; margin-top: .75rem; border: 0; }
+  #pickup-options legend { margin-bottom: .4rem; color: #e6edf3; font-size: .9rem; font-weight: 600; }
+  .pickup-option { display: flex; align-items: center; gap: .65rem; min-height: 3.25rem; padding: .65rem .75rem; border: 1px solid #697582; border-radius: 6px; background: #161b22; color: #e6edf3; font-size: .9rem; line-height: 1.35; cursor: pointer; }
+  .pickup-option:has(input:checked) { border-color: #3fb950; background: #15251b; }
+  .pickup-option input { flex: 0 0 auto; width: 1.25rem; height: 1.25rem; accent-color: #2ea043; }
+  .pickup-option input:focus-visible { outline: 2px solid #58a6ff; outline-offset: 3px; }
+  #btn {
+    width: 100%;
+    min-height: 3.5rem;
+    background: #2ea043;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: .7rem 1rem;
+    font-size: 1.1rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background .15s ease;
+  }
+  #btn:hover:not(:disabled) { background: #3fb950; }
+  #btn:focus-visible { outline: 3px solid #58a6ff; outline-offset: 2px; }
+  #btn:disabled { background: #30363d; color: #8b949e; cursor: not-allowed; }
+  #status { display: flex; align-items: center; justify-content: center; gap: .5rem; width: min(100%, 34rem); min-height: 1.5em; font-size: .95rem; color: #9198a1; line-height: 1.4; }
+  #status-icon { flex: 0 0 auto; }
+  #status-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #status.loading #status-icon { width: .8rem; height: .8rem; border: 2px solid #5b4d2b; border-top-color: #e3b341; border-radius: 50%; animation: spin .8s linear infinite; }
+  #status.err { color: #f85149; }
+  #status.ok { color: #3fb950; }
+  #zone-warning { width: min(100%, 34rem); padding: .7rem .85rem; border-left: 3px solid #e3b341; background: #2b2517; color: #f0d58c; font-size: .9rem; line-height: 1.45; text-align: left; }
+  #gps-help { display: grid; gap: .75rem; width: min(100%, 34rem); padding: .9rem 1rem; border: 1px solid #e3b341; border-left-width: 4px; border-radius: 6px; background: #fff3cd; color: #664d04; text-align: left; line-height: 1.45; }
+  #gps-help[hidden] { display: none; }
+  #gps-help h2 { font-size: 1rem; line-height: 1.35; }
+  #gps-help ol { display: grid; gap: .55rem; padding-left: 1.5rem; }
+  #gps-help li { padding-left: .1rem; }
+  .gps-step-icon { margin-right: .25rem; }
+  #manual-address { justify-self: start; min-height: 2.75rem; padding: .55rem .8rem; border: 1px solid #856404; border-radius: 6px; background: #fff; color: #593f00; font: inherit; font-weight: 700; cursor: pointer; }
+  #manual-address:hover { background: #fff8e1; }
+  #manual-address:focus-visible { outline: 3px solid #0969da; outline-offset: 2px; }
+  #reset-app { justify-self: center; min-height: 2.75rem; padding: .55rem .8rem; border: 1px solid #697582; border-radius: 6px; background: #161b22; color: #e6edf3; font: inherit; font-weight: 600; cursor: pointer; }
+  #reset-app:hover { background: #202830; }
+  #reset-app:focus-visible { outline: 3px solid #58a6ff; outline-offset: 2px; }
+  #reset-confirm-dialog { width: min(calc(100% - 2rem), 28rem); max-width: none; margin: auto; padding: 1.2rem; border: 1px solid #697582; border-radius: 6px; background: #161b22; color: #e6edf3; }
+  #reset-confirm-dialog::backdrop { background: rgb(0 0 0 / 65%); }
+  #reset-confirm-dialog form { display: grid; gap: .75rem; }
+  #reset-confirm-dialog h2 { font-size: 1.15rem; }
+  #reset-confirm-dialog p { line-height: 1.45; text-align: left; }
+  #reset-confirm-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .25rem; }
+  #reset-confirm-actions button { min-height: 2.75rem; padding: .55rem .8rem; border-radius: 6px; font: inherit; font-weight: 600; cursor: pointer; }
+  #reset-confirm-cancel { border: 1px solid #697582; background: #161b22; color: #e6edf3; }
+  #reset-confirm-continue { border: 1px solid #2ea043; background: #2ea043; color: #fff; }
+  #reset-confirm-actions button:focus-visible { outline: 3px solid #58a6ff; outline-offset: 2px; }
+    #request-status { width: min(100%, 34rem); padding: .9rem 1rem; border: 1px solid #3fb950; border-left-width: 4px; border-radius: 6px; background: #15251b; color: #e6edf3; text-align: left; line-height: 1.45; animation: status-in .2s ease-out; }
+    #request-status[hidden] { display: none; }
+    #request-status[data-state="en-route"] { border-color: #58a6ff; background: #142331; }
+    #request-status[data-state="completed"] { border-color: #3fb950; background: #15251b; }
+    #request-status p { margin-top: .25rem; }
+    #request-id { display: block; margin-top: .4rem; color: #aab2bc; font-size: .82rem; font-variant-numeric: tabular-nums; }
+    @keyframes status-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+    @media (prefers-reduced-motion: reduce) { #request-status { animation: none; } }
+  #coordinates { color: #aab2bc; font-size: .85rem; font-variant-numeric: tabular-nums; }
+  #map-card { width: min(100%, 36rem); }
+  #map-frame { display: none; width: 100%; height: min(18rem, 40vh); min-height: 12rem; border: 1px solid #30363d; border-radius: 6px; background: #161b22; color: #e6edf3; }
+  #map-legend { display: flex; justify-content: center; flex-wrap: wrap; gap: .5rem 1rem; padding-top: .45rem; color: #aab2bc; font-size: .8rem; }
+  #map-legend[hidden] { display: none; }
+  #map-legend span { display: inline-flex; align-items: center; gap: .35rem; }
+  .legend-area { width: .9rem; height: .65rem; border: 2px solid #2e7d32; background: #4caf5080; }
+  .legend-position { width: .75rem; height: .75rem; border: 2px solid #fff; border-radius: 50%; background: #1677d2; box-shadow: 0 0 0 1px #1677d2; }
+  footer { display: grid; gap: .35rem; width: min(100%, 34rem); margin-top: auto; padding-top: .75rem; border-top: 1px solid #30363d; color: #9198a1; font-size: .85rem; }
+    footer .version { margin-left: .3rem; color: #aab2bc; font-size: .75rem; }
+  footer a { color: #58a6ff; text-decoration: underline; text-underline-offset: .15em; }
+  footer a:focus-visible { outline: 2px solid #58a6ff; outline-offset: 3px; }
+  .err { color: #f85149 !important; }
+  .ok  { color: #3fb950 !important; }
+  @media (prefers-reduced-motion: reduce) { #status.loading #status-icon { animation: none; } }
+  @media (max-width: 480px) { #map-frame { height: min(15rem, 38vh); } #btn { font-size: 1rem; } }
+  @media (orientation: landscape) and (max-height: 500px) {
+    body { gap: .4rem; padding: .4rem max(.75rem, env(safe-area-inset-left)) .75rem; }
+    h1 { font-size: 1.25rem; }
+    #primary-actions { grid-template-columns: minmax(0, 1fr) minmax(12rem, .8fr); align-items: end; gap: .5rem; padding: .35rem .5rem; }
+    #address-entry { min-width: 0; }
+    #btn { min-height: 3.25rem; }
+    #map-frame { height: 12rem; min-height: 10rem; }
+  }

@@ -6,12 +6,15 @@ Ce document décrit le fonctionnement technique pour aider une personne qui souh
 
 ## Contenu du dépôt
 
-- `index.html` : application principale, formulaire, géolocalisation, carte, adresse, envoi ntfy et suivi de demande.
-- `explications.html` : page d’information destinée aux visiteurs, avec une carte du secteur.
+- `index.html` : structure de l’application principale.
+- `explications.html` : contenu de la page d’information destinée aux visiteurs.
+- `css/app.css` et `css/explications.css` : styles propres à chaque page.
+- `js/app.js` : formulaire, géolocalisation, stockage, envoi ntfy et suivi des demandes.
+- `js/explications.js` : initialisation de la carte du secteur sur la page d’information.
 - `README.md` : documentation technique du projet.
 - `LICENSE` : texte de la GNU General Public License, version 2.
 
-Il n’y a actuellement ni étape de compilation, ni gestionnaire de paquets, ni suite de tests automatisés. L’application est constituée de pages HTML, CSS et JavaScript autonomes.
+Il n’y a actuellement ni étape de compilation, ni gestionnaire de paquets, ni suite de tests automatisés. Les pages restent statiques : le HTML décrit leur structure, les feuilles CSS leur présentation et les scripts JavaScript leur comportement.
 
 ## Mise en route
 
@@ -33,7 +36,7 @@ Les pages chargent leurs dépendances et données à distance : Leaflet 1.9.4 vi
 
 ## Parcours d’une demande
 
-1. Au chargement, si aucune demande active n’est restaurée, le navigateur demande la position GPS.
+1. Au chargement, une demande active est restaurée en premier. Sinon, une adresse confirmée enregistrée est réutilisée sans GPS; en son absence, le navigateur demande la position.
 2. La position sert à afficher la carte, vérifier si le point se trouve dans le secteur desservi et rechercher une adresse avec Nominatim.
 3. L’adresse détectée ou réutilisée apparaît dans le champ et peut être corrigée. Si la géolocalisation est refusée ou échoue, le visiteur peut saisir une adresse manuellement.
 4. Le visiteur choisit l’instruction de cueillette : laisser les consignes près de la porte (🚪) ou sonner (🔔), puis envoie la demande.
@@ -95,7 +98,7 @@ Les deux actions ntfy ont `clear: true` : une action réussie peut retirer la no
 
 ## Configuration principale
 
-Les constantes de configuration se trouvent au début du script dans `index.html`.
+Les constantes de configuration se trouvent au début de `js/app.js`.
 
 - `NTFY_TOPIC` : sujet ntfy principal auquel la notification de demande est envoyée. Il doit être propre au déploiement et difficile à deviner.
 - `NTFY_BASE_URL` : serveur ntfy utilisé, actuellement `https://ntfy.sh/`.
@@ -132,7 +135,7 @@ Les données restent dans le stockage du navigateur, propres à l’origine du s
 - `canetteGet.confirmedAddress.v1` : dernière adresse d’une demande marquée terminée. Cette valeur est réutilisée même lorsque la géolocalisation échoue.
 - `active_request_id`, `active_request_created_at`, `active_request_status_topic`, `active_request_status`, `active_request_address` : état nécessaire pour restaurer et suivre une demande en cours. Ces clés sont supprimées quand la demande est terminée, expirée, invalide ou réinitialisée.
 
-Le bouton « Réinitialiser » efface le suivi local de la demande et recharge la page. Il ne peut pas annuler une demande qui a déjà été transmise aux cueilleuses. Il conserve l’adresse mise en cache et l’adresse confirmée.
+Le bouton « Réinitialiser » efface les clés de stockage local utilisées par l’application (demande active, cache GPS et adresse confirmée), puis recharge la page. Il ne peut pas annuler une demande qui a déjà été transmise aux cueilleuses.
 
 ## Carte et polygone du secteur
 
@@ -171,7 +174,7 @@ Il n’existe pas encore de tests automatisés. Avant de publier une modificatio
 3. Soumettre une demande : ntfy reçoit une notification avec la bonne adresse, l’icône 🚪 ou 🔔 et les deux actions.
 4. Utiliser « En route » : la page active affiche le statut correspondant; recharger la page restaure le suivi sans redemander le GPS.
 5. Utiliser « Terminé » : l’état se ferme après son bref affichage et l’adresse reste mémorisée.
-6. Tester « Réinitialiser » avec une demande active : annuler conserve le suivi; confirmer l’efface localement sans effacer les adresses sauvegardées.
+6. Tester « Réinitialiser » avec une demande active : annuler conserve le suivi; confirmer efface toutes les données locales de l’application et relance le parcours initial.
 7. Tester les messages d’attente avant, pendant et après les plages horaires, en semaine et la fin de semaine.
 
 ## Pistes pour continuer le projet
